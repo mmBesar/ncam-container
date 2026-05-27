@@ -57,13 +57,5 @@ jobs:
           git checkout -B upstream upstream/master
           git rm -rf --ignore-unmatch .github/ || true
           git commit --allow-empty -m "chore: sync upstream NCam @ ${{ steps.check.outputs.upstream_sha_short }}" || true
+          # This push fires build-image.yml automatically via the push trigger
           git push origin upstream --force
-
-      - name: Trigger image build
-        if: steps.check.outputs.has_new == 'true'
-        run: |
-          gh workflow run build-image.yml \
-            --field upstream_sha="${{ steps.check.outputs.upstream_sha }}" \
-            --field upstream_sha_short="${{ steps.check.outputs.upstream_sha_short }}"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

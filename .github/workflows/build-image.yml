@@ -1,6 +1,9 @@
 name: Build & Push Image
 
 on:
+  push:
+    branches:
+      - upstream
   workflow_dispatch:
     inputs:
       upstream_sha:
