@@ -1,0 +1,69 @@
+name: Sync Upstream NCam
+
+on:
+  schedule:
+    # Check for new upstream commits every 6 hours
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout mmBesar/ncam-container
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Add fairbird/NCam as remote
+        run: |
+          git remote add upstream https://github.com/fairbird/NCam.git || true
+          git fetch upstream master
+
+      - name: Check for new upstream commits
+        id: check
+        run: |
+          # Get latest upstream commit SHA
+          UPSTREAM_SHA=$(git rev-parse upstream/master)
+          echo "upstream_sha=${UPSTREAM_SHA}" >> "$GITHUB_OUTPUT"
+          echo "upstream_sha_short=${UPSTREAM_SHA:0:7}" >> "$GITHUB_OUTPUT"
+
+          # Check if our upstream branch already has this commit
+          git fetch origin upstream 2>/dev/null || true
+          LOCAL_SHA=$(git rev-parse origin/upstream 2>/dev/null || echo "none")
+
+          if [ "${UPSTREAM_SHA}" = "${LOCAL_SHA}" ]; then
+            echo "No new commits — already up to date."
+            echo "has_new=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "New upstream commit: ${UPSTREAM_SHA:0:7}"
+            echo "has_new=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Push upstream source to upstream branch
+        if: steps.check.outputs.has_new == 'true'
+        run: |
+          # Force-update the upstream branch to match fairbird/NCam:master exactly
+          # Strip .github/ so upstream workflows never pollute our repo
+          git checkout -B upstream upstream/master
+          git rm -rf --ignore-unmatch .github/ || true
+          git commit --allow-empty -m "chore: sync upstream NCam @ ${{ steps.check.outputs.upstream_sha_short }}" || true
+          git push origin upstream --force
+
+      - name: Trigger image build
+        if: steps.check.outputs.has_new == 'true'
+        run: |
+          gh workflow run build-image.yml \
+            --field upstream_sha="${{ steps.check.outputs.upstream_sha }}" \
+            --field upstream_sha_short="${{ steps.check.outputs.upstream_sha_short }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
