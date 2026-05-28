@@ -7,20 +7,20 @@ set -e
 PUID=${PUID:-2000}
 PGID=${PGID:-2000}
 
-echo "[ncam] Starting with UID=${PUID}, GID=${PGID}, TZ=${TZ}"
+echo "[ncam] UID=${PUID} GID=${PGID} TZ=${TZ}"
 
 # Remap group
-if ! getent group ncam > /dev/null 2>&1; then
-    addgroup -g "${PGID}" ncam
-else
+if getent group ncam > /dev/null 2>&1; then
     groupmod -g "${PGID}" ncam 2>/dev/null || true
+else
+    addgroup -g "${PGID}" ncam
 fi
 
 # Remap user
-if ! getent passwd ncam > /dev/null 2>&1; then
-    adduser -D -u "${PUID}" -G ncam -s /sbin/nologin ncam
-else
+if getent passwd ncam > /dev/null 2>&1; then
     usermod -u "${PUID}" -g "${PGID}" ncam 2>/dev/null || true
+else
+    adduser -D -u "${PUID}" -G ncam -s /sbin/nologin ncam
 fi
 
 # Fix ownership of writable dirs
@@ -28,12 +28,11 @@ chown -R ncam:ncam /etc/ncam /var/log/ncam
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Launch NCam as remapped user
-# -b  run in background (disabled — let tini/Docker manage the process)
-# -r 0  log to stdout (Docker-native logging)
-# -c  config dir
-# -t  temp/log dir
+#   -c  config directory
+#   -t  temp/log directory
+#   -r 0  log rotation off — let Docker capture stdout
 # ─────────────────────────────────────────────────────────────────────────────
-exec su-exec ncam ncam \
+exec su-exec ncam:ncam ncam \
     -c /etc/ncam \
     -t /var/log/ncam \
     -r 0 \

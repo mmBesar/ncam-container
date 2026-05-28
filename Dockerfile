@@ -4,33 +4,40 @@
 # ─────────────────────────────────────────────────────────────────────────────
 FROM alpine:edge AS builder
 
-# Build dependencies
-RUN apk add --no-cache \
+ENV MAKEFLAGS="-j$(nproc)"
+
+RUN apk add --no-cache --virtual=build-dependencies \
     build-base \
     git \
-    libcrypto3 \
-    openssl-dev \
     libusb-dev \
-    pcsc-lite-dev \
-    linux-headers
+    linux-headers \
+    openssl-dev \
+    pcsc-lite-dev
 
-# Copy NCam source (synced from fairbird/NCam via upstream branch)
+# NCam source is the build context (upstream branch)
 WORKDIR /build
 COPY . .
 
-# Compile NCam with EMU support
-# USE_SSL=1        – HTTPS webif + reader TLS
-# USE_LIBUSB=1     – Smargo / USB smartcard readers
-# USE_PCSC=1       – PC/SC smartcard readers
-# USE_EMU=1        – built-in EMU (the whole point of NCam over OSCam)
-# CONF_DIR          – default config directory inside container
+# 1. Configure: enable all, disable hardware/platform-specific stuff not
+#    relevant to a generic PC container (same pattern as linuxserver OSCam)
+RUN ./config.sh \
+    --enable all \
+    --disable \
+    CARDREADER_DB2COM \
+    CARDREADER_INTERNAL \
+    CARDREADER_STAPI \
+    CARDREADER_STAPI5 \
+    CARDREADER_STINGER \
+    IPV6SUPPORT \
+    LCDSUPPORT \
+    LEDSUPPORT \
+    READ_SDT_CHARSETS
+
+# 2. Compile: pcsc-libusb target, clean binary name, config dir
 RUN make \
-    USE_SSL=1 \
-    USE_LIBUSB=1 \
-    USE_PCSC=1 \
-    USE_EMU=1 \
     CONF_DIR=/etc/ncam \
-    -j"$(nproc)"
+    NCAM_BIN=/usr/bin/ncam \
+    pcsc-libusb
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 2 – lean runtime image
@@ -42,37 +49,33 @@ LABEL org.opencontainers.image.title="ncam-container" \
       org.opencontainers.image.source="https://github.com/mmBesar/ncam-container" \
       org.opencontainers.image.licenses="GPL-2.0"
 
-# Runtime dependencies + tini + tzdata
 RUN apk add --no-cache \
-    libcrypto3 \
-    libssl3 \
+    ccid \
     libusb \
+    openssl \
+    pcsc-lite \
     pcsc-lite-libs \
-    tzdata \
-    tini
+    su-exec \
+    tini \
+    tzdata
 
-# Copy compiled binary
-COPY --from=builder /build/ncam /usr/local/bin/ncam
-RUN chmod 755 /usr/local/bin/ncam
+COPY --from=builder /usr/bin/ncam /usr/bin/ncam
+RUN chmod 755 /usr/bin/ncam
 
-# Create ncam system user (UID 2000 — overridden at runtime via PUID/PGID)
 RUN addgroup -g 2000 ncam && \
     adduser -D -u 2000 -G ncam -s /sbin/nologin ncam
 
-# Config and log directories
 RUN mkdir -p /etc/ncam /var/log/ncam && \
     chown -R ncam:ncam /etc/ncam /var/log/ncam
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-# Config persisted; logs optional (can also stdout via -r 0)
 VOLUME ["/etc/ncam"]
 
 # NCam web interface default port
 EXPOSE 8888
 
-# PUID/PGID – runtime user remapping (non-negotiable)
 ENV PUID=2000 \
     PGID=2000 \
     TZ=UTC
