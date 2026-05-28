@@ -12,6 +12,7 @@ RUN apk add --no-cache --virtual=build-dependencies \
     libdvbcsa-dev \
     libusb-dev \
     linux-headers \
+    openssl \
     openssl-dev \
     pcsc-lite-dev
 
@@ -35,7 +36,7 @@ RUN ./config.sh \
     READ_SDT_CHARSETS
 
 # 2. Compile: pcsc-libusb target, clean binary name, config dir
-RUN make V=1 \
+RUN make \
     CONF_DIR=/etc/ncam \
     NCAM_BIN=/usr/bin/ncam \
     EXTRA_FLAGS="-I/usr/include/PCSC" \
@@ -53,6 +54,7 @@ LABEL org.opencontainers.image.title="ncam-container" \
 
 RUN apk add --no-cache \
     ccid \
+    libdvbcsa \
     libusb \
     openssl \
     pcsc-lite \
