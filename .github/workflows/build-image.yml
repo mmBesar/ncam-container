@@ -21,7 +21,22 @@ jobs:
       packages: write
 
     steps:
-      - name: Checkout upstream branch (NCam source)
+      - name: Checkout main (Dockerfile + entrypoint)
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          path: main
+
+      - name: Checkout upstream (NCam source) into src/
+        uses: actions/checkout@v6
+        with:
+          ref: upstream
+          path: src
+
+      - name: Assemble build context
+        run: |
+          cp main/Dockerfile src/Dockerfile
+          cp main/entrypoint.sh src/entrypoint.sh
         uses: actions/checkout@v6
         with:
           ref: upstream
@@ -47,8 +62,8 @@ jobs:
       - name: Build & push amd64
         uses: docker/build-push-action@v7
         with:
-          context: .
-          file: Dockerfile
+          context: src
+          file: src/Dockerfile
           platforms: linux/amd64
           push: true
           tags: ${{ steps.tags.outputs.repo }}:${{ steps.tags.outputs.sha_short }}-amd64
@@ -65,7 +80,22 @@ jobs:
       packages: write
 
     steps:
-      - name: Checkout upstream branch (NCam source)
+      - name: Checkout main (Dockerfile + entrypoint)
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          path: main
+
+      - name: Checkout upstream (NCam source) into src/
+        uses: actions/checkout@v6
+        with:
+          ref: upstream
+          path: src
+
+      - name: Assemble build context
+        run: |
+          cp main/Dockerfile src/Dockerfile
+          cp main/entrypoint.sh src/entrypoint.sh
         uses: actions/checkout@v6
         with:
           ref: upstream
@@ -91,8 +121,8 @@ jobs:
       - name: Build & push arm64
         uses: docker/build-push-action@v7
         with:
-          context: .
-          file: Dockerfile
+          context: src
+          file: src/Dockerfile
           platforms: linux/arm64
           push: true
           tags: ${{ steps.tags.outputs.repo }}:${{ steps.tags.outputs.sha_short }}-arm64
@@ -109,7 +139,22 @@ jobs:
       packages: write
 
     steps:
-      - name: Checkout upstream branch (NCam source)
+      - name: Checkout main (Dockerfile + entrypoint)
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          path: main
+
+      - name: Checkout upstream (NCam source) into src/
+        uses: actions/checkout@v6
+        with:
+          ref: upstream
+          path: src
+
+      - name: Assemble build context
+        run: |
+          cp main/Dockerfile src/Dockerfile
+          cp main/entrypoint.sh src/entrypoint.sh
         uses: actions/checkout@v6
         with:
           ref: upstream
@@ -135,8 +180,8 @@ jobs:
       - name: Build & push riscv64
         uses: docker/build-push-action@v7
         with:
-          context: .
-          file: Dockerfile
+          context: src
+          file: src/Dockerfile
           platforms: linux/riscv64
           push: true
           tags: ${{ steps.tags.outputs.repo }}:${{ steps.tags.outputs.sha_short }}-riscv64
