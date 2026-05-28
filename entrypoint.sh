@@ -4,13 +4,13 @@ set -e
 # ─────────────────────────────────────────────────────────────────────────────
 # entrypoint.sh — NCam container startup script
 #
-# Remaps the internal 'ncam' user/group to match the host PUID/PGID,
-# fixes directory ownership, then launches NCam as that user.
+# Creates/remaps the ncam user to match host PUID/PGID, fixes directory
+# ownership, then launches NCam as that user via su-exec.
 #
-# Environment variables:
-#   PUID  — host user ID to run NCam as (default: 1000)
-#   PGID  — host group ID to run NCam as (default: 1000)
-#   TZ    — timezone (default: UTC)
+# Environment variables (set in docker-compose.yml):
+#   PUID  — host user ID  (default: 1000)
+#   PGID  — host group ID (default: 1000)
+#   TZ    — timezone      (default: UTC)
 # ─────────────────────────────────────────────────────────────────────────────
 
 PUID=${PUID:-1000}
@@ -19,34 +19,32 @@ PGID=${PGID:-1000}
 echo "[ncam] Starting as UID=${PUID} GID=${PGID} TZ=${TZ}"
 
 # ── Remap group ───────────────────────────────────────────────────────────────
-# If the ncam group already exists, update its GID.
-# Otherwise create it fresh with the desired GID.
+# Delete existing ncam group and recreate with correct GID.
+# Simpler and more reliable than groupmod on Alpine.
 if getent group ncam > /dev/null 2>&1; then
-    groupmod -g "${PGID}" ncam 2>/dev/null || true
-else
-    addgroup -g "${PGID}" ncam
+    delgroup ncam 2>/dev/null || true
 fi
+addgroup -g "${PGID}" ncam
 
 # ── Remap user ────────────────────────────────────────────────────────────────
-# Same logic for the ncam user — update UID/GID if exists, create if not.
+# Delete existing ncam user and recreate with correct UID/GID.
+# Simpler and more reliable than usermod on Alpine.
 if getent passwd ncam > /dev/null 2>&1; then
-    usermod -u "${PUID}" -g "${PGID}" ncam 2>/dev/null || true
-else
-    adduser -D -u "${PUID}" -G ncam -s /sbin/nologin ncam
+    deluser ncam 2>/dev/null || true
 fi
+adduser -D -u "${PUID}" -G ncam -s /sbin/nologin ncam
 
 # ── Fix ownership ─────────────────────────────────────────────────────────────
-# Use numeric PUID/PGID directly — NOT 'ncam:ncam' — so ownership is always
-# correct regardless of remap timing. This prevents the config dir from being
-# owned by the wrong UID on the host after container restart.
+# Run as root here so we can always fix ownership regardless of previous state.
+# Uses numeric PUID/PGID — not 'ncam:ncam' — to guarantee correct values.
 chown -R "${PUID}:${PGID}" /etc/ncam /var/log/ncam
 
 # ── Launch NCam ───────────────────────────────────────────────────────────────
-# su-exec drops root and runs NCam as the remapped ncam user.
-#   -c  config directory (mounted volume)
-#   -t  temp/log directory
-#   -r 0  disable log rotation — Docker handles log capture via stdout
-exec su-exec ncam:ncam ncam \
+# su-exec uses numeric UID/GID directly — bypasses any username resolution.
+# -c  config directory (mounted volume)
+# -t  temp/log directory
+# -r 0  log to stdout — Docker handles log capture
+exec su-exec "${PUID}:${PGID}" ncam \
     -c /etc/ncam \
     -t /var/log/ncam \
     -r 0 \
