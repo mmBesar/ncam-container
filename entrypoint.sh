@@ -18,20 +18,16 @@ PGID=${PGID:-1000}
 
 echo "[ncam] Starting as UID=${PUID} GID=${PGID} TZ=${TZ}"
 
-# ── Remap group ───────────────────────────────────────────────────────────────
-# Delete existing ncam group and recreate with correct GID.
-# Simpler and more reliable than groupmod on Alpine.
+# ── Remap user ────────────────────────────────────────────────────────────────
+# Delete existing ncam user and group, then recreate with correct UID/GID.
+# Must delete user before group (group can't be deleted while it has a member).
+if getent passwd ncam > /dev/null 2>&1; then
+    deluser ncam 2>/dev/null || true
+fi
 if getent group ncam > /dev/null 2>&1; then
     delgroup ncam 2>/dev/null || true
 fi
 addgroup -g "${PGID}" ncam
-
-# ── Remap user ────────────────────────────────────────────────────────────────
-# Delete existing ncam user and recreate with correct UID/GID.
-# Simpler and more reliable than usermod on Alpine.
-if getent passwd ncam > /dev/null 2>&1; then
-    deluser ncam 2>/dev/null || true
-fi
 adduser -D -u "${PUID}" -G ncam -s /sbin/nologin ncam
 
 # ── Fix ownership ─────────────────────────────────────────────────────────────

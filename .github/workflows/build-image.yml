@@ -2,6 +2,7 @@
 #
 # Builds and pushes a multi-arch NCam image to GHCR.
 # Triggered by sync-upstream.yml via repository_dispatch, or manually.
+# Uses git tags as ledger to avoid rebuilding identical upstream+main combos.
 
 name: Build & Push Image
 
@@ -11,10 +12,39 @@ on:
   workflow_dispatch:
 
 jobs:
-  # ─────────────────────────────────────────────────────────────────────────
-  # Build amd64 natively on GitHub-hosted ubuntu runner
-  # ─────────────────────────────────────────────────────────────────────────
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      already_built: ${{ steps.check.outputs.already_built }}
+      build_key: ${{ steps.check.outputs.build_key }}
+      sha_short: ${{ steps.check.outputs.sha_short }}
+      repo: ${{ steps.check.outputs.repo }}
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+
+      - name: Resolve key and check git tag ledger
+        id: check
+        run: |
+          REPO=$(echo "ghcr.io/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          UPSTREAM_SHA=$(git ls-remote origin refs/heads/upstream | cut -c1-7)
+          MAIN_SHA=$(git rev-parse --short HEAD)
+          BUILD_KEY="${UPSTREAM_SHA}-${MAIN_SHA}"
+          echo "repo=${REPO}" >> "$GITHUB_OUTPUT"
+          echo "sha_short=${UPSTREAM_SHA}" >> "$GITHUB_OUTPUT"
+          echo "build_key=${BUILD_KEY}" >> "$GITHUB_OUTPUT"
+          if git ls-remote origin "refs/tags/built/${BUILD_KEY}" | grep -q .; then
+            echo "already_built=true" >> "$GITHUB_OUTPUT"
+            echo "Tag built/${BUILD_KEY} exists -- skipping."
+          else
+            echo "already_built=false" >> "$GITHUB_OUTPUT"
+          fi
+
   build-amd64:
+    needs: [check]
+    if: needs.check.outputs.already_built == 'false'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -67,10 +97,9 @@ jobs:
           cache-from: type=gha,scope=amd64
           cache-to: type=gha,mode=max,scope=amd64
 
-  # ─────────────────────────────────────────────────────────────────────────
-  # Build arm64 natively on GitHub-hosted arm64 runner (no QEMU)
-  # ─────────────────────────────────────────────────────────────────────────
   build-arm64:
+    needs: [check]
+    if: needs.check.outputs.already_built == 'false'
     runs-on: ubuntu-24.04-arm
     permissions:
       contents: read
@@ -123,10 +152,9 @@ jobs:
           cache-from: type=gha,scope=arm64
           cache-to: type=gha,mode=max,scope=arm64
 
-  # ─────────────────────────────────────────────────────────────────────────
-  # Build riscv64 via RISE RISC-V Runners (native, no QEMU)
-  # ─────────────────────────────────────────────────────────────────────────
   build-riscv64:
+    needs: [check]
+    if: needs.check.outputs.already_built == 'false'
     runs-on: ubuntu-24.04-riscv
     permissions:
       contents: read
@@ -179,18 +207,15 @@ jobs:
           cache-from: type=gha,scope=riscv64
           cache-to: type=gha,mode=max,scope=riscv64
 
-  # ─────────────────────────────────────────────────────────────────────────
-  # Merge arch images into a single multi-arch manifest
-  # ─────────────────────────────────────────────────────────────────────────
   manifest:
     runs-on: ubuntu-latest
-    needs: [build-amd64, build-arm64, build-riscv64]
+    needs: [check, build-amd64, build-arm64, build-riscv64]
     permissions:
       contents: write
       packages: write
 
     steps:
-      - name: Checkout main branch (for built-tags.txt)
+      - name: Checkout main (for tag push)
         uses: actions/checkout@v6
         with:
           ref: main
@@ -203,43 +228,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Resolve names
-        id: names
-        run: |
-          REPO=$(echo "ghcr.io/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-
-          # Upstream SHA — identifies the NCam source version
-          UPSTREAM_SHA=$(git ls-remote origin refs/heads/upstream | cut -c1-7)
-
-          # Main SHA — identifies our Dockerfile/entrypoint version
-          # This ensures a rebuild happens when we change our files,
-          # even if upstream NCam hasn't changed
-          MAIN_SHA=$(git rev-parse --short HEAD)
-
-          # Combined key — both must match to consider a build already done
-          BUILD_KEY="${UPSTREAM_SHA}-${MAIN_SHA}"
-
-          echo "repo=${REPO}" >> "$GITHUB_OUTPUT"
-          echo "sha_short=${UPSTREAM_SHA}" >> "$GITHUB_OUTPUT"
-          echo "build_key=${BUILD_KEY}" >> "$GITHUB_OUTPUT"
-
-      - name: Check built-tags ledger
-        id: ledger
-        run: |
-          touch built-tags.txt
-          BUILD_KEY="${{ steps.names.outputs.build_key }}"
-          if grep -qx "${BUILD_KEY}" built-tags.txt; then
-            echo "already_built=true" >> "$GITHUB_OUTPUT"
-            echo "Build key ${BUILD_KEY} already in ledger — skipping."
-          else
-            echo "already_built=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Create and push multi-arch manifest
-        if: steps.ledger.outputs.already_built == 'false'
         run: |
-          REPO="${{ steps.names.outputs.repo }}"
-          SHA="${{ steps.names.outputs.sha_short }}"
+          REPO="${{ needs.check.outputs.repo }}"
+          SHA="${{ needs.check.outputs.sha_short }}"
           docker buildx imagetools create \
             --tag "${REPO}:${SHA}" \
             --tag "${REPO}:latest" \
@@ -247,13 +239,7 @@ jobs:
             "${REPO}:${SHA}-arm64" \
             "${REPO}:${SHA}-riscv64"
 
-      - name: Update built-tags ledger
-        if: steps.ledger.outputs.already_built == 'false'
+      - name: Record build with git tag
         run: |
-          # Record the combined key — upstream SHA + main SHA
-          echo "${{ steps.names.outputs.build_key }}" >> built-tags.txt
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add built-tags.txt
-          git commit -m "chore: record built key ${{ steps.names.outputs.build_key }}"
-          git push origin main
+          git tag "built/${{ needs.check.outputs.build_key }}"
+          git push origin "built/${{ needs.check.outputs.build_key }}"
