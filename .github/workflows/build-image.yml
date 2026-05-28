@@ -35,11 +35,8 @@ jobs:
 
       - name: Assemble build context
         run: |
-          cp main/Dockerfile src/Dockerfile
+          cp main/Dockerfile    src/Dockerfile
           cp main/entrypoint.sh src/entrypoint.sh
-        uses: actions/checkout@v6
-        with:
-          ref: upstream
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -55,7 +52,7 @@ jobs:
         id: tags
         run: |
           REPO=$(echo "ghcr.io/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          SHA_SHORT=$(git rev-parse --short HEAD)
+          SHA_SHORT=$(cd src && git rev-parse --short HEAD)
           echo "repo=${REPO}" >> "$GITHUB_OUTPUT"
           echo "sha_short=${SHA_SHORT}" >> "$GITHUB_OUTPUT"
 
@@ -94,11 +91,8 @@ jobs:
 
       - name: Assemble build context
         run: |
-          cp main/Dockerfile src/Dockerfile
+          cp main/Dockerfile    src/Dockerfile
           cp main/entrypoint.sh src/entrypoint.sh
-        uses: actions/checkout@v6
-        with:
-          ref: upstream
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -114,7 +108,7 @@ jobs:
         id: tags
         run: |
           REPO=$(echo "ghcr.io/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          SHA_SHORT=$(git rev-parse --short HEAD)
+          SHA_SHORT=$(cd src && git rev-parse --short HEAD)
           echo "repo=${REPO}" >> "$GITHUB_OUTPUT"
           echo "sha_short=${SHA_SHORT}" >> "$GITHUB_OUTPUT"
 
@@ -153,11 +147,8 @@ jobs:
 
       - name: Assemble build context
         run: |
-          cp main/Dockerfile src/Dockerfile
+          cp main/Dockerfile    src/Dockerfile
           cp main/entrypoint.sh src/entrypoint.sh
-        uses: actions/checkout@v6
-        with:
-          ref: upstream
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -173,7 +164,7 @@ jobs:
         id: tags
         run: |
           REPO=$(echo "ghcr.io/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          SHA_SHORT=$(git rev-parse --short HEAD)
+          SHA_SHORT=$(cd src && git rev-parse --short HEAD)
           echo "repo=${REPO}" >> "$GITHUB_OUTPUT"
           echo "sha_short=${SHA_SHORT}" >> "$GITHUB_OUTPUT"
 
@@ -216,7 +207,6 @@ jobs:
         id: names
         run: |
           REPO=$(echo "ghcr.io/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          # Get SHA from the upstream branch HEAD
           SHA_SHORT=$(git ls-remote origin refs/heads/upstream | cut -c1-7)
           echo "repo=${REPO}" >> "$GITHUB_OUTPUT"
           echo "sha_short=${SHA_SHORT}" >> "$GITHUB_OUTPUT"
