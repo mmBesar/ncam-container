@@ -1,26 +1,21 @@
+# .github/workflows/build-image.yml
+#
+# Builds and pushes a multi-arch NCam image to GHCR.
+# Triggered by sync-upstream.yml via repository_dispatch, or manually.
+
 name: Build & Push Image
 
 on:
-  push:
-    branches:
-      - upstream
+  repository_dispatch:
+    types: [upstream-release]
   workflow_dispatch:
-    inputs:
-      upstream_sha:
-        description: "Full upstream commit SHA"
-        required: false
-        default: ""
-      upstream_sha_short:
-        description: "Short upstream commit SHA (7 chars)"
-        required: false
-        default: ""
 
 jobs:
-  # ───────────────────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────────
   # Build amd64 natively on GitHub-hosted ubuntu runner
-  # ───────────────────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────────
   build-amd64:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
@@ -45,10 +40,7 @@ jobs:
         id: tags
         run: |
           REPO=$(echo "ghcr.io/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          SHA_SHORT="${{ inputs.upstream_sha_short }}"
-          if [ -z "${SHA_SHORT}" ]; then
-            SHA_SHORT=$(git rev-parse --short HEAD)
-          fi
+          SHA_SHORT=$(git rev-parse --short HEAD)
           echo "repo=${REPO}" >> "$GITHUB_OUTPUT"
           echo "sha_short=${SHA_SHORT}" >> "$GITHUB_OUTPUT"
 
@@ -59,14 +51,13 @@ jobs:
           file: Dockerfile
           platforms: linux/amd64
           push: true
-          tags: |
-            ${{ steps.tags.outputs.repo }}:${{ steps.tags.outputs.sha_short }}-amd64
+          tags: ${{ steps.tags.outputs.repo }}:${{ steps.tags.outputs.sha_short }}-amd64
           cache-from: type=gha,scope=amd64
           cache-to: type=gha,mode=max,scope=amd64
 
-  # ───────────────────────────────────────────────────────────────────────────
-  # Build arm64 natively on GitHub-hosted arm64 runner (free, no QEMU)
-  # ───────────────────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────────
+  # Build arm64 natively on GitHub-hosted arm64 runner (no QEMU)
+  # ─────────────────────────────────────────────────────────────────────────
   build-arm64:
     runs-on: ubuntu-24.04-arm
     permissions:
@@ -93,10 +84,7 @@ jobs:
         id: tags
         run: |
           REPO=$(echo "ghcr.io/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          SHA_SHORT="${{ inputs.upstream_sha_short }}"
-          if [ -z "${SHA_SHORT}" ]; then
-            SHA_SHORT=$(git rev-parse --short HEAD)
-          fi
+          SHA_SHORT=$(git rev-parse --short HEAD)
           echo "repo=${REPO}" >> "$GITHUB_OUTPUT"
           echo "sha_short=${SHA_SHORT}" >> "$GITHUB_OUTPUT"
 
@@ -107,14 +95,13 @@ jobs:
           file: Dockerfile
           platforms: linux/arm64
           push: true
-          tags: |
-            ${{ steps.tags.outputs.repo }}:${{ steps.tags.outputs.sha_short }}-arm64
+          tags: ${{ steps.tags.outputs.repo }}:${{ steps.tags.outputs.sha_short }}-arm64
           cache-from: type=gha,scope=arm64
           cache-to: type=gha,mode=max,scope=arm64
 
-  # ───────────────────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────────
   # Build riscv64 via RISE RISC-V Runners (native, no QEMU)
-  # ───────────────────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────────
   build-riscv64:
     runs-on: ubuntu-24.04-riscv
     permissions:
@@ -141,10 +128,7 @@ jobs:
         id: tags
         run: |
           REPO=$(echo "ghcr.io/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          SHA_SHORT="${{ inputs.upstream_sha_short }}"
-          if [ -z "${SHA_SHORT}" ]; then
-            SHA_SHORT=$(git rev-parse --short HEAD)
-          fi
+          SHA_SHORT=$(git rev-parse --short HEAD)
           echo "repo=${REPO}" >> "$GITHUB_OUTPUT"
           echo "sha_short=${SHA_SHORT}" >> "$GITHUB_OUTPUT"
 
@@ -155,16 +139,15 @@ jobs:
           file: Dockerfile
           platforms: linux/riscv64
           push: true
-          tags: |
-            ${{ steps.tags.outputs.repo }}:${{ steps.tags.outputs.sha_short }}-riscv64
+          tags: ${{ steps.tags.outputs.repo }}:${{ steps.tags.outputs.sha_short }}-riscv64
           cache-from: type=gha,scope=riscv64
           cache-to: type=gha,mode=max,scope=riscv64
 
-  # ───────────────────────────────────────────────────────────────────────────
-  # Merge arch-specific images into a single multi-arch manifest
-  # ───────────────────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────────
+  # Merge arch images into a single multi-arch manifest
+  # ─────────────────────────────────────────────────────────────────────────
   manifest:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     needs: [build-amd64, build-arm64, build-riscv64]
     permissions:
       contents: write
@@ -188,10 +171,8 @@ jobs:
         id: names
         run: |
           REPO=$(echo "ghcr.io/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          SHA_SHORT="${{ inputs.upstream_sha_short }}"
-          if [ -z "${SHA_SHORT}" ]; then
-            SHA_SHORT=$(git rev-parse --short HEAD)
-          fi
+          # Get SHA from the upstream branch HEAD
+          SHA_SHORT=$(git ls-remote origin refs/heads/upstream | cut -c1-7)
           echo "repo=${REPO}" >> "$GITHUB_OUTPUT"
           echo "sha_short=${SHA_SHORT}" >> "$GITHUB_OUTPUT"
 
@@ -202,7 +183,7 @@ jobs:
           SHA="${{ steps.names.outputs.sha_short }}"
           if grep -qx "${SHA}" built-tags.txt; then
             echo "already_built=true" >> "$GITHUB_OUTPUT"
-            echo "SHA ${SHA} already in ledger — skipping manifest push."
+            echo "SHA ${SHA} already in ledger — skipping."
           else
             echo "already_built=false" >> "$GITHUB_OUTPUT"
           fi
@@ -212,7 +193,6 @@ jobs:
         run: |
           REPO="${{ steps.names.outputs.repo }}"
           SHA="${{ steps.names.outputs.sha_short }}"
-
           docker buildx imagetools create \
             --tag "${REPO}:${SHA}" \
             --tag "${REPO}:latest" \

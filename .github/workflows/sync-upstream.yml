@@ -1,19 +1,31 @@
-name: Sync Upstream NCam
+# .github/workflows/sync-upstream.yml
+#
+# Syncs fairbird/NCam:master → our `upstream` branch.
+# Dispatches a build event when new commits are detected.
+
+name: Sync — NCam
 
 on:
   schedule:
-    # Check for new upstream commits every 6 hours
     - cron: "0 */6 * * *"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-ncam
+  cancel-in-progress: true
+
 jobs:
   sync:
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
+    runs-on: ubuntu-latest
+    outputs:
+      updated: ${{ steps.compare.outputs.updated }}
+      upstream_sha: ${{ steps.fetch.outputs.upstream_sha }}
 
     steps:
-      - name: Checkout mmBesar/ncam-container
+      - name: Checkout
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
@@ -24,38 +36,52 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Add fairbird/NCam as remote
+      - name: Fetch upstream
+        id: fetch
         run: |
-          git remote add upstream https://github.com/fairbird/NCam.git || true
-          git fetch upstream master
+          git remote add ncam-upstream https://github.com/fairbird/NCam.git || true
+          git fetch ncam-upstream master --no-tags
+          SHA=$(git rev-parse ncam-upstream/master)
+          echo "upstream_sha=${SHA}" >> "$GITHUB_OUTPUT"
 
-      - name: Check for new upstream commits
-        id: check
+      - name: Compare with our upstream branch
+        id: compare
         run: |
-          # Get latest upstream commit SHA
-          UPSTREAM_SHA=$(git rev-parse upstream/master)
-          echo "upstream_sha=${UPSTREAM_SHA}" >> "$GITHUB_OUTPUT"
-          echo "upstream_sha_short=${UPSTREAM_SHA:0:7}" >> "$GITHUB_OUTPUT"
-
-          # Check if our upstream branch already has this commit
-          git fetch origin upstream 2>/dev/null || true
-          LOCAL_SHA=$(git rev-parse origin/upstream 2>/dev/null || echo "none")
-
-          if [ "${UPSTREAM_SHA}" = "${LOCAL_SHA}" ]; then
-            echo "No new commits — already up to date."
-            echo "has_new=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "New upstream commit: ${UPSTREAM_SHA:0:7}"
-            echo "has_new=true" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code origin refs/heads/upstream; then
+            git fetch origin upstream
+            OUR=$(git rev-parse origin/upstream)
+            if [ "$OUR" = "${{ steps.fetch.outputs.upstream_sha }}" ]; then
+              echo "No changes in NCam upstream."
+              echo "updated=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
           fi
+          echo "updated=true" >> "$GITHUB_OUTPUT"
 
-      - name: Push upstream source to upstream branch
-        if: steps.check.outputs.has_new == 'true'
+      - name: Update upstream branch
+        if: steps.compare.outputs.updated == 'true'
         run: |
-          # Force-update the upstream branch to match fairbird/NCam:master exactly
-          # Strip .github/ so upstream workflows never pollute our repo
-          git checkout -B upstream upstream/master
-          git rm -rf --ignore-unmatch .github/ || true
-          git commit --allow-empty -m "chore: sync upstream NCam @ ${{ steps.check.outputs.upstream_sha_short }}" || true
-          # This push fires build-image.yml automatically via the push trigger
-          git push origin upstream --force
+          git checkout -B upstream ncam-upstream/master
+          # Strip upstream's .github/ — must never interfere with our workflows
+          if [ -d .github ]; then
+            git rm -rf .github/ --quiet
+            git commit -m "chore: strip upstream .github/ [bot]"
+          fi
+          git push origin upstream --force-with-lease
+
+  trigger-build:
+    needs: sync
+    if: needs.sync.outputs.updated == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch container-build
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            await github.rest.repos.createDispatchEvent({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              event_type: 'upstream-release',
+              client_payload: { source: 'ncam', sha: '${{ needs.sync.outputs.upstream_sha }}' }
+            });
