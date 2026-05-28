@@ -1,5 +1,3 @@
 # built-tags ledger — one short SHA per line
 # Pre-populate with the first SHA after your initial push to prevent duplicate builds.
 # The manifest job appends here automatically on every successful build.
-309257a
-4025f1e

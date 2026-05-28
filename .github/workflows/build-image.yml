@@ -207,18 +207,30 @@ jobs:
         id: names
         run: |
           REPO=$(echo "ghcr.io/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          SHA_SHORT=$(git ls-remote origin refs/heads/upstream | cut -c1-7)
+
+          # Upstream SHA — identifies the NCam source version
+          UPSTREAM_SHA=$(git ls-remote origin refs/heads/upstream | cut -c1-7)
+
+          # Main SHA — identifies our Dockerfile/entrypoint version
+          # This ensures a rebuild happens when we change our files,
+          # even if upstream NCam hasn't changed
+          MAIN_SHA=$(git rev-parse --short HEAD)
+
+          # Combined key — both must match to consider a build already done
+          BUILD_KEY="${UPSTREAM_SHA}-${MAIN_SHA}"
+
           echo "repo=${REPO}" >> "$GITHUB_OUTPUT"
-          echo "sha_short=${SHA_SHORT}" >> "$GITHUB_OUTPUT"
+          echo "sha_short=${UPSTREAM_SHA}" >> "$GITHUB_OUTPUT"
+          echo "build_key=${BUILD_KEY}" >> "$GITHUB_OUTPUT"
 
       - name: Check built-tags ledger
         id: ledger
         run: |
           touch built-tags.txt
-          SHA="${{ steps.names.outputs.sha_short }}"
-          if grep -qx "${SHA}" built-tags.txt; then
+          BUILD_KEY="${{ steps.names.outputs.build_key }}"
+          if grep -qx "${BUILD_KEY}" built-tags.txt; then
             echo "already_built=true" >> "$GITHUB_OUTPUT"
-            echo "SHA ${SHA} already in ledger — skipping."
+            echo "Build key ${BUILD_KEY} already in ledger — skipping."
           else
             echo "already_built=false" >> "$GITHUB_OUTPUT"
           fi
@@ -238,9 +250,10 @@ jobs:
       - name: Update built-tags ledger
         if: steps.ledger.outputs.already_built == 'false'
         run: |
-          echo "${{ steps.names.outputs.sha_short }}" >> built-tags.txt
+          # Record the combined key — upstream SHA + main SHA
+          echo "${{ steps.names.outputs.build_key }}" >> built-tags.txt
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add built-tags.txt
-          git commit -m "chore: record built tag ${{ steps.names.outputs.sha_short }}"
+          git commit -m "chore: record built key ${{ steps.names.outputs.build_key }}"
           git push origin main
