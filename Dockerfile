@@ -9,10 +9,12 @@ ENV MAKEFLAGS="-j$(nproc)"
 RUN apk add --no-cache --virtual=build-dependencies \
     build-base \
     git \
+    libdvbcsa-dev \
     libusb-dev \
     linux-headers \
     openssl-dev \
-    pcsc-lite-dev
+    pcsc-lite-dev && \
+    ln -s /usr/include/PCSC/wintypes.h /usr/include/wintypes.h
 
 # NCam source is the build context (upstream branch)
 WORKDIR /build
