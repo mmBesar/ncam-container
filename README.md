@@ -30,7 +30,7 @@ docker run -d \
   -e PUID=1000 \
   -e PGID=1000 \
   -e TZ=Africa/Cairo \
-  -p 8888:8888 \
+  -p 8181:8181 \
   -v /your/config/path:/etc/ncam \
   --restart unless-stopped \
   ghcr.io/mmbesar/ncam-container:latest
@@ -48,7 +48,7 @@ services:
       - PGID=1000
       - TZ=Africa/Cairo
     ports:
-      - 8888:8888
+      - 8181:8181
     volumes:
       - ./config:/etc/ncam
     restart: unless-stopped
@@ -60,8 +60,8 @@ services:
 
 | Variable | Default | Description |
 |---|---|---|
-| `PUID` | `2000` | UID to run NCam as |
-| `PGID` | `2000` | GID to run NCam as |
+| `PUID` | `1000` | UID to run NCam as |
+| `PGID` | `1000` | GID to run NCam as |
 | `TZ` | `UTC` | Timezone (e.g. `Africa/Cairo`, `Europe/Berlin`) |
 
 ---
@@ -78,7 +78,7 @@ Mount your NCam config files to `/etc/ncam`:
 └── SoftCam.Key     ← EMU key file
 ```
 
-The web interface is available at `http://<host>:8888`.
+The web interface is available at `http://<host>:8181`.
 
 ---
 
