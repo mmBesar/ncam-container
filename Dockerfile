@@ -13,8 +13,7 @@ RUN apk add --no-cache --virtual=build-dependencies \
     libusb-dev \
     linux-headers \
     openssl-dev \
-    pcsc-lite-dev && \
-    ln -s /usr/include/PCSC/wintypes.h /usr/include/wintypes.h
+    pcsc-lite-dev
 
 # NCam source is the build context (upstream branch)
 WORKDIR /build
@@ -36,9 +35,10 @@ RUN ./config.sh \
     READ_SDT_CHARSETS
 
 # 2. Compile: pcsc-libusb target, clean binary name, config dir
-RUN make \
+RUN make V=1 \
     CONF_DIR=/etc/ncam \
     NCAM_BIN=/usr/bin/ncam \
+    EXTRA_FLAGS="-I/usr/include/PCSC" \
     pcsc-libusb
 
 # ─────────────────────────────────────────────────────────────────────────────
