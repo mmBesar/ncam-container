@@ -93,7 +93,9 @@ jobs:
           file: src/Dockerfile
           platforms: linux/amd64
           push: true
-          tags: ${{ steps.tags.outputs.repo }}:${{ steps.tags.outputs.sha_short }}-amd64
+          tags: |
+            ${{ steps.tags.outputs.repo }}:${{ steps.tags.outputs.sha_short }}-amd64
+            ${{ steps.tags.outputs.repo }}:latest-amd64
           cache-from: type=gha,scope=amd64
           cache-to: type=gha,mode=max,scope=amd64
 
@@ -148,7 +150,9 @@ jobs:
           file: src/Dockerfile
           platforms: linux/arm64
           push: true
-          tags: ${{ steps.tags.outputs.repo }}:${{ steps.tags.outputs.sha_short }}-arm64
+          tags: |
+            ${{ steps.tags.outputs.repo }}:${{ steps.tags.outputs.sha_short }}-arm64
+            ${{ steps.tags.outputs.repo }}:latest-arm64
           cache-from: type=gha,scope=arm64
           cache-to: type=gha,mode=max,scope=arm64
 
@@ -203,7 +207,9 @@ jobs:
           file: src/Dockerfile
           platforms: linux/riscv64
           push: true
-          tags: ${{ steps.tags.outputs.repo }}:${{ steps.tags.outputs.sha_short }}-riscv64
+          tags: |
+            ${{ steps.tags.outputs.repo }}:${{ steps.tags.outputs.sha_short }}-riscv64
+            ${{ steps.tags.outputs.repo }}:latest-riscv64
           cache-from: type=gha,scope=riscv64
           cache-to: type=gha,mode=max,scope=riscv64
 
